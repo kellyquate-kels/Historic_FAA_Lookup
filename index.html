@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FAA ASN Lookup by Coordinates</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #eef2f7;
+    min-height: 100vh;
+    padding: 40px 16px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+  }
+  .card {
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 3px 16px rgba(0,0,0,0.13);
+    width: 100%;
+    max-width: 780px;
+    overflow: hidden;
+  }
+  .card-header {
+    background: #003087;
+    color: #fff;
+    padding: 24px 30px;
+    border-bottom: 4px solid #CC2A36;
+  }
+  .card-header h1 { font-size: 21px; font-weight: 700; letter-spacing: 0.2px; }
+  .card-header p  { font-size: 13px; opacity: 0.82; margin-top: 5px; }
+  .card-body { padding: 28px 30px; }
+
+  .section { margin-bottom: 24px; }
+  .section-title {
+    font-size: 12px; font-weight: 700; color: #003087;
+    text-transform: uppercase; letter-spacing: 0.8px;
+    margin-bottom: 14px; padding-bottom: 6px;
+    border-bottom: 2px solid #e0e8f4;
+  }
+
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 13px; font-weight: 600; color: #333; margin-bottom: 6px; }
+  .field input, .field select {
+    width: 100%; padding: 10px 13px; border: 1px solid #ccc;
+    border-radius: 5px; font-size: 14px; color: #222;
+    transition: border-color 0.18s; outline: none; background: #fff;
+  }
+  .field input:focus, .field select:focus {
+    border-color: #003087; box-shadow: 0 0 0 3px rgba(0,48,135,0.1);
+  }
+  .field .hint { font-size: 11px; color: #777; margin-top: 5px; }
+
+  .row { display: flex; gap: 16px; }
+  .row .field { flex: 1; }
+
+  /* File drop zone */
+  .file-zone {
+    border: 2px dashed #b0bfdc;
+    border-radius: 7px;
+    padding: 22px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.18s;
+    background: #f6f9ff;
+    position: relative;
+  }
+  .file-zone:hover, .file-zone.dragover { border-color: #003087; background: #edf2fb; }
+  .file-zone input[type="file"] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .file-zone .icon { font-size: 28px; margin-bottom: 8px; }
+  .file-zone .label { font-size: 14px; color: #555; }
+  .file-zone .label b { color: #003087; }
+  .file-zone .sub { font-size: 11px; color: #999; margin-top: 4px; }
+
+  .file-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #e8f0fe; color: #003087; border: 1px solid #b0caf8;
+    border-radius: 14px; padding: 4px 10px; font-size: 12px;
+    font-weight: 600; margin: 4px 4px 0 0;
+  }
+  .file-badge.success { background: #e6f4ea; color: #1a6e30; border-color: #a8d5b5; }
+  .file-badge.error   { background: #fce8e6; color: #b00020; border-color: #f5b7b7; }
+
+  .btn {
+    padding: 11px 28px; background: #003087; color: #fff;
+    border: none; border-radius: 5px; font-size: 15px; font-weight: 600;
+    cursor: pointer; transition: background 0.18s; letter-spacing: 0.2px;
+  }
+  .btn:hover { background: #002068; }
+  .btn:disabled { background: #9aabcc; cursor: not-allowed; }
+  .btn-sm {
+    padding: 5px 12px; font-size: 12px; border-radius: 4px;
+    background: #003087; color: #fff; border: none; cursor: pointer;
+  }
+  .btn-sm:hover { background: #002068; }
+
+  #status {
+    margin-top: 14px; padding: 10px 14px; border-radius: 5px;
+    font-size: 13px; display: none;
+  }
+  #status.info    { background: #e8f0fe; color: #003087; border: 1px solid #b0caf8; display: block; }
+  #status.error   { background: #fce8e6; color: #b00020; border: 1px solid #f5b7b7; display: block; }
+  #status.success { background: #e6f4ea; color: #1a6e30; border: 1px solid #a8d5b5; display: block; }
+
+  /* Results */
+  #results { margin-top: 6px; }
+  .result-count {
+    font-size: 13px; color: #555; margin-bottom: 12px;
+    padding: 8px 12px; background: #f4f6fa; border-radius: 5px;
+  }
+  .result-count b { color: #003087; }
+  .no-results {
+    text-align: center; padding: 32px; color: #777; font-size: 14px;
+    background: #f8f9fa; border-radius: 7px;
+  }
+
+  .result-card {
+    border: 1px solid #dde4f0; border-radius: 8px; margin-bottom: 14px;
+    overflow: hidden; transition: box-shadow 0.18s;
+  }
+  .result-card:hover { box-shadow: 0 2px 10px rgba(0,48,135,0.1); }
+  .result-card.best { border-color: #003087; border-width: 2px; }
+
+  .result-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; background: #f0f4fb; border-bottom: 1px solid #dde4f0;
+    flex-wrap: wrap; gap: 8px;
+  }
+  .result-card.best .result-head { background: #e8f0fe; }
+  .result-asn { font-size: 16px; font-weight: 700; color: #003087; }
+  .result-dist { font-size: 12px; color: #555; }
+  .result-dist b { color: #003087; }
+
+  .badge {
+    display: inline-block; border-radius: 10px; padding: 2px 9px;
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+  }
+  .badge-green  { background: #e6f4ea; color: #1a6e30; }
+  .badge-yellow { background: #fef8e7; color: #7d5c00; }
+  .badge-blue   { background: #e8f0fe; color: #003087; }
+  .badge-gray   { background: #f1f3f4; color: #5f6368; }
+
+  .result-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0; padding: 0;
+  }
+  .result-field {
+    padding: 10px 16px; border-bottom: 1px solid #f0f0f0; border-right: 1px solid #f0f0f0;
+  }
+  .result-field:last-child { border-right: none; }
+  .result-field .rf-label { font-size: 10px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; }
+  .result-field .rf-val   { font-size: 13px; color: #222; word-break: break-all; }
+  .result-field .rf-val.empty { color: #bbb; font-style: italic; }
+  .copy-asn { float: right; font-size: 11px; }
+
+  .best-tag {
+    display: inline-block; background: #CC2A36; color: #fff;
+    font-size: 10px; font-weight: 700; border-radius: 8px;
+    padding: 2px 7px; letter-spacing: 0.4px; text-transform: uppercase;
+    margin-left: 8px; vertical-align: middle;
+  }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="card-header">
+    <h1>FAA ASN Lookup by Coordinates</h1>
+    <p>Load the FAA Off Airport List CSV files and search by site coordinates</p>
+  </div>
+  <div class="card-body">
+
+    <!-- Step 1: Load CSVs -->
+    <div class="section">
+      <div class="section-title">Step 1 &mdash; Load FAA Data Files</div>
+      <div class="file-zone" id="fileZone">
+        <input type="file" id="csvInput" accept=".csv" multiple>
+        <div class="icon">📂</div>
+        <div class="label">Drop CSV files here or <b>click to browse</b></div>
+        <div class="sub">Select one or both FAA Off Airport List CSV files (ASO / ASW)</div>
+      </div>
+      <div id="fileBadges" style="margin-top:10px;"></div>
+      <div id="loadStatus"></div>
+    </div>
+
+    <!-- Step 2: Search -->
+    <div class="section">
+      <div class="section-title">Step 2 &mdash; Enter Coordinates</div>
+      <div class="field">
+        <label>Site Coordinates</label>
+        <input type="text" id="coordInput"
+               placeholder="34-31-20.10N, 82-07-02.75W  or  34.5222, -82.1174">
+        <div class="hint">
+          Accepts DMS format (<code>34-31-20.10N, 82-07-02.75W</code>)
+          or decimal degrees (<code>34.5222, -82.1174</code>)
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Search Radius</label>
+          <select id="radiusInput">
+            <option value="0.1">0.1 mile &mdash; tight match</option>
+            <option value="0.5" selected>0.5 mile</option>
+            <option value="1">1 mile</option>
+            <option value="5">5 miles</option>
+            <option value="25">25 miles &mdash; wide search</option>
+          </select>
+        </div>
+        <div class="field" style="display:flex;align-items:flex-end;">
+          <button class="btn" id="searchBtn" onclick="doSearch()" disabled>Search</button>
+        </div>
+      </div>
+      <div id="status"></div>
+    </div>
+
+    <!-- Results -->
+    <div id="results"></div>
+
+  </div>
+</div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+let allRecords = [];
+
+// ─── CSV Parser ───────────────────────────────────────────────────────────────
+function parseCSV(text) {
+  const rows = [];
+  let i = 0;
+  const len = text.length;
+  while (i < len) {
+    const row = [];
+    // Parse each field
+    while (true) {
+      if (i < len && text[i] === '"') {
+        // Quoted field
+        i++; // skip opening quote
+        let field = '';
+        while (i < len) {
+          if (text[i] === '"' && text[i+1] === '"') { field += '"'; i += 2; }
+          else if (text[i] === '"') { i++; break; }
+          else { field += text[i++]; }
+        }
+        row.push(field.trim());
+      } else {
+        // Unquoted field — read until comma or newline
+        let field = '';
+        while (i < len && text[i] !== ',' && text[i] !== '\n' && text[i] !== '\r') {
+          field += text[i++];
+        }
+        row.push(field.trim());
+      }
+      // After field: comma = next field, else end of row
+      if (i < len && text[i] === ',') { i++; continue; }
+      break;
+    }
+    // Skip newline(s)
+    while (i < len && (text[i] === '\r' || text[i] === '\n')) i++;
+    if (row.length > 1 || (row.length === 1 && row[0] !== '')) rows.push(row);
+  }
+  return rows;
+}
+
+// ─── DMS Parser ───────────────────────────────────────────────────────────────
+// Handles: "34-31-20.10N", "35 - 17 - 10.61 N", "34.5222", "-82.1174"
+function parseDMS(s) {
+  s = s.trim().toUpperCase();
+  // Try plain decimal first
+  const decimalMatch = s.match(/^-?\d+\.?\d*$/);
+  if (decimalMatch) return parseFloat(s);
+
+  // Remove spaces around dashes, then parse
+  s = s.replace(/\s*-\s*/g, '-').replace(/\s+/g, '');
+  const m = s.match(/^(\d+)-(\d+)-(\d+(?:\.\d+)?)([NSEW])$/);
+  if (!m) return null;
+  let dd = parseInt(m[1]) + parseInt(m[2]) / 60 + parseFloat(m[3]) / 3600;
+  if (m[4] === 'S' || m[4] === 'W') dd = -dd;
+  return dd;
+}
+
+// Parse a full coordinate pair string into { lat, lon } decimal degrees
+function parseCoordPair(str) {
+  str = str.trim();
+
+  // Try DMS pair: "34-31-20.10N, 82-07-02.75W"
+  const dmsPairMatch = str.match(/^([0-9 \-]+[NS])[,\s]+([0-9 \-]+[EW])$/i);
+  if (dmsPairMatch) {
+    const lat = parseDMS(dmsPairMatch[1]);
+    const lon = parseDMS(dmsPairMatch[2]);
+    if (lat !== null && lon !== null) return { lat, lon };
+  }
+
+  // Try decimal pair: "34.5222, -82.1174"
+  const decPairMatch = str.match(/^(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)$/);
+  if (decPairMatch) {
+    return { lat: parseFloat(decPairMatch[1]), lon: parseFloat(decPairMatch[2]) };
+  }
+
+  return null;
+}
+
+// ─── Haversine Distance (miles) ───────────────────────────────────────────────
+function distanceMiles(lat1, lon1, lat2, lon2) {
+  const R = 3958.8; // Earth radius in miles
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) ** 2
+    + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// ─── Map column header names to indices ──────────────────────────────────────
+function mapHeaders(headers) {
+  const map = {};
+  headers.forEach((h, i) => {
+    const key = h.trim().toUpperCase().replace(/\s+/g, '_');
+    // Only record first occurrence of each normalized key
+    if (!(key in map)) map[key] = i;
+  });
+  return map;
+}
+
+// ─── Load CSV Files ───────────────────────────────────────────────────────────
+const fileZone = document.getElementById('fileZone');
+const csvInput = document.getElementById('csvInput');
+const fileBadges = document.getElementById('fileBadges');
+const loadStatus = document.getElementById('loadStatus');
+const searchBtn = document.getElementById('searchBtn');
+
+fileZone.addEventListener('dragover', e => { e.preventDefault(); fileZone.classList.add('dragover'); });
+fileZone.addEventListener('dragleave', () => fileZone.classList.remove('dragover'));
+fileZone.addEventListener('drop', e => {
+  e.preventDefault();
+  fileZone.classList.remove('dragover');
+  handleFiles(e.dataTransfer.files);
+});
+csvInput.addEventListener('change', e => handleFiles(e.target.files));
+
+async function handleFiles(fileList) {
+  const files = Array.from(fileList).filter(f => f.name.toLowerCase().endsWith('.csv'));
+  if (!files.length) {
+    showLoadStatus('No CSV files selected.', 'error');
+    return;
+  }
+
+  allRecords = [];
+  fileBadges.innerHTML = '';
+  let totalLoaded = 0;
+  let errors = [];
+
+  for (const file of files) {
+    try {
+      const text = await file.text();
+      const rows = parseCSV(text);
+      if (rows.length < 2) { errors.push(file.name + ': no data rows'); continue; }
+
+      const headers = rows[0];
+      const hMap = mapHeaders(headers);
+
+      // Resolve column indices by header name
+      const iAsn = hMap['STUDY_(ASN)'] ?? hMap['STUDY(ASN)'] ?? 1;
+      const iPriorAsn = hMap['PRIOR_ASN'] ?? 2;
+      const iStatus = hMap['STATUS'] ?? 3;
+      const iDetermination = hMap['DETERMINATION'] ?? 4;
+      const iLat = hMap['LATITUDE'] ?? 5;
+      const iLon = hMap['LONGITUTDE'] ?? hMap['LONGITUDE'] ?? 6;
+      const iMarking = hMap['MARKING_LIGHTING_TYPE'] ?? 10;
+      const iFcc = hMap['FCC_NUMBER'] ?? -1;
+
+      let count = 0;
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r];
+        if (!row || row.length < 2) continue;
+
+        const latStr = row[iLat] || '';
+        const lonStr = row[iLon] || '';
+        const lat = parseDMS(latStr);
+        const lon = parseDMS(lonStr);
+        if (lat === null || lon === null || isNaN(lat) || isNaN(lon)) continue;
+
+        allRecords.push({
+          lat, lon,
+          asn:         row[iAsn]         || '',
+          priorAsn:    row[iPriorAsn]    || '',
+          status:      row[iStatus]      || '',
+          determination: row[iDetermination] || '',
+          latStr:      latStr,
+          lonStr:      lonStr,
+          marking:     row[iMarking]     || '',
+          fcc:         iFcc >= 0 ? (row[iFcc] || '') : '',
+          source:      file.name,
+          coordDisplay: row[0] || `${latStr}, ${lonStr}`,
+        });
+        count++;
+      }
+
+      totalLoaded += count;
+      const badge = document.createElement('span');
+      badge.className = 'file-badge success';
+      badge.textContent = `✓ ${file.name} (${count} records)`;
+      fileBadges.appendChild(badge);
+    } catch (err) {
+      errors.push(file.name + ': ' + err.message);
+      const badge = document.createElement('span');
+      badge.className = 'file-badge error';
+      badge.textContent = `✗ ${file.name}`;
+      fileBadges.appendChild(badge);
+    }
+  }
+
+  if (errors.length) {
+    showLoadStatus('Errors loading: ' + errors.join('; '), 'error');
+  } else {
+    showLoadStatus(`${totalLoaded.toLocaleString()} records loaded from ${files.length} file(s). Ready to search.`, 'success');
+    searchBtn.disabled = false;
+  }
+}
+
+function showLoadStatus(msg, type) {
+  loadStatus.textContent = msg;
+  loadStatus.className = 'hint';
+  loadStatus.style.marginTop = '8px';
+  if (type === 'error') loadStatus.style.color = '#b00020';
+  else if (type === 'success') loadStatus.style.color = '#1a6e30';
+  else loadStatus.style.color = '#555';
+}
+
+// ─── Search ───────────────────────────────────────────────────────────────────
+function doSearch() {
+  const rawCoord = document.getElementById('coordInput').value.trim();
+  const radiusMiles = parseFloat(document.getElementById('radiusInput').value);
+  const statusEl = document.getElementById('status');
+  const resultsEl = document.getElementById('results');
+
+  statusEl.className = '';
+  statusEl.style.display = 'none';
+  resultsEl.innerHTML = '';
+
+  if (!rawCoord) {
+    setStatus('Enter coordinates to search.', 'error');
+    return;
+  }
+  if (!allRecords.length) {
+    setStatus('Load at least one CSV file first.', 'error');
+    return;
+  }
+
+  const coords = parseCoordPair(rawCoord);
+  if (!coords) {
+    setStatus('Could not parse coordinates. Use DMS format (34-31-20.10N, 82-07-02.75W) or decimal degrees (34.5222, -82.1174).', 'error');
+    return;
+  }
+
+  // Search
+  const matches = allRecords
+    .map(rec => ({ ...rec, dist: distanceMiles(coords.lat, coords.lon, rec.lat, rec.lon) }))
+    .filter(rec => rec.dist <= radiusMiles)
+    .sort((a, b) => a.dist - b.dist);
+
+  if (!matches.length) {
+    setStatus(`No records found within ${radiusMiles} mile(s) of ${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}.`, 'error');
+    return;
+  }
+
+  setStatus(`Found <b>${matches.length}</b> record(s) within ${radiusMiles} mile(s) of <b>${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)}</b>.`, 'success');
+
+  const html = matches.map((rec, idx) => buildResultCard(rec, idx === 0)).join('');
+  resultsEl.innerHTML = html;
+}
+
+function setStatus(html, type) {
+  const el = document.getElementById('status');
+  el.innerHTML = html;
+  el.className = type;
+  el.style.display = 'block';
+}
+
+function buildResultCard(rec, isBest) {
+  const distFt = (rec.dist * 5280).toFixed(0);
+  const distStr = rec.dist < 0.1
+    ? `${Number(distFt).toLocaleString()} ft`
+    : `${rec.dist.toFixed(3)} mi`;
+
+  const detBadge = rec.determination
+    ? (rec.determination.toLowerCase().includes('no hazard')
+        ? `<span class="badge badge-green">${esc(rec.determination)}</span>`
+        : `<span class="badge badge-yellow">${esc(rec.determination)}</span>`)
+    : '';
+
+  const statusBadge = rec.status
+    ? (rec.status.toLowerCase().includes('determined')
+        ? `<span class="badge badge-blue">${esc(rec.status)}</span>`
+        : `<span class="badge badge-gray">${esc(rec.status)}</span>`)
+    : '';
+
+  const decCoords = `${rec.lat.toFixed(6)}, ${rec.lon.toFixed(6)}`;
+
+  const fields = [
+    { label: 'FAA ASN', val: rec.asn, copy: true },
+    { label: 'Prior ASN', val: rec.priorAsn },
+    { label: 'Lat / Lon (DMS)', val: `${rec.latStr}, ${rec.lonStr}` },
+    { label: 'Lat / Lon (Decimal)', val: decCoords, copy: true },
+    { label: 'Status', val: rec.status },
+    { label: 'Determination', val: rec.determination },
+    { label: 'Marking / Lighting', val: rec.marking },
+    { label: 'FCC Number', val: rec.fcc },
+    { label: 'Source', val: rec.source },
+  ];
+
+  const fieldsHtml = fields.map(f => {
+    const isEmpty = !f.val;
+    const valHtml = isEmpty
+      ? `<div class="rf-val empty">—</div>`
+      : `<div class="rf-val">${esc(f.val)}${f.copy && f.val ? ` <button class="btn-sm copy-asn" onclick="copyText('${esc(f.val)}', this)" title="Copy">Copy</button>` : ''}</div>`;
+    return `<div class="result-field"><div class="rf-label">${esc(f.label)}</div>${valHtml}</div>`;
+  }).join('');
+
+  return `
+  <div class="result-card${isBest ? ' best' : ''}">
+    <div class="result-head">
+      <div>
+        <span class="result-asn">${esc(rec.asn) || '(no ASN)'}${isBest ? '<span class="best-tag">Nearest</span>' : ''}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        ${detBadge} ${statusBadge}
+        <span class="result-dist">Distance: <b>${distStr}</b></span>
+      </div>
+    </div>
+    <div class="result-grid">${fieldsHtml}</div>
+  </div>`;
+}
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function copyText(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    btn.style.background = '#1a6e30';
+    setTimeout(() => { btn.textContent = orig; btn.style.background = ''; }, 1500);
+  });
+}
+
+// Allow pressing Enter to search
+document.getElementById('coordInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doSearch();
+});
+</script>
+</body>
+</html>
