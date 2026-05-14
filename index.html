@@ -157,6 +157,19 @@
   .result-field .rf-val.empty { color: #bbb; font-style: italic; }
   .copy-asn { float: right; font-size: 11px; }
 
+  /* DMS Converter */
+  .dms-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .dms-part { width: 68px !important; padding: 10px 8px !important; text-align: center; }
+  .dms-sec  { width: 86px !important; }
+  .dms-dir  { width: 58px !important; padding: 10px 6px !important; }
+  .dms-sep  { font-size: 14px; color: #555; font-weight: 600; flex-shrink: 0; }
+  .dms-output {
+    display: none; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-top: 12px; padding: 10px 14px; border-radius: 5px;
+    background: #e8f0fe; border: 1px solid #b0caf8;
+  }
+  .dms-output .dec-val { font-size: 15px; font-weight: 700; color: #003087; letter-spacing: 0.2px; }
+
   .best-tag {
     display: inline-block; background: #CC2A36; color: #fff;
     font-size: 10px; font-weight: 700; border-radius: 8px;
@@ -184,6 +197,52 @@
       </div>
       <div id="fileBadges" style="margin-top:10px;"></div>
       <div id="loadStatus"></div>
+    </div>
+
+    <!-- DMS to Decimal Converter -->
+    <div class="section">
+      <div class="section-title">DMS to Decimal Converter</div>
+      <div class="row">
+        <div class="field">
+          <label>Latitude</label>
+          <div class="dms-row">
+            <input type="number" id="latDeg" placeholder="Deg" min="0" max="90" class="dms-part">
+            <span class="dms-sep">°</span>
+            <input type="number" id="latMin" placeholder="Min" min="0" max="59" class="dms-part">
+            <span class="dms-sep">'</span>
+            <input type="number" id="latSec" placeholder="Sec" min="0" max="59.9999" step="0.0001" class="dms-part dms-sec">
+            <span class="dms-sep">"</span>
+            <select id="latDir" class="dms-dir">
+              <option value="N">N</option>
+              <option value="S">S</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>Longitude</label>
+          <div class="dms-row">
+            <input type="number" id="lonDeg" placeholder="Deg" min="0" max="180" class="dms-part">
+            <span class="dms-sep">°</span>
+            <input type="number" id="lonMin" placeholder="Min" min="0" max="59" class="dms-part">
+            <span class="dms-sep">'</span>
+            <input type="number" id="lonSec" placeholder="Sec" min="0" max="59.9999" step="0.0001" class="dms-part dms-sec">
+            <span class="dms-sep">"</span>
+            <select id="lonDir" class="dms-dir">
+              <option value="W" selected>W</option>
+              <option value="E">E</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:12px;">
+        <button class="btn" onclick="convertDMS()">Convert</button>
+        <div id="dmsError" style="font-size:12px;color:#b00020;margin-top:6px;display:none;"></div>
+      </div>
+      <div class="dms-output" id="dmsOutput">
+        <span class="dec-val" id="dmsResultText"></span>
+        <button class="btn-sm" onclick="useDMSResult()">Use in Search</button>
+        <button class="btn-sm" onclick="copyDMSResult(this)">Copy</button>
+      </div>
     </div>
 
     <!-- Step 2: Search -->
@@ -538,6 +597,65 @@ function esc(s) {
 }
 
 function copyText(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    btn.style.background = '#1a6e30';
+    setTimeout(() => { btn.textContent = orig; btn.style.background = ''; }, 1500);
+  });
+}
+
+// ─── DMS Converter ───────────────────────────────────────────────────────────
+function convertDMS() {
+  const latDeg = parseFloat(document.getElementById('latDeg').value);
+  const latMin = parseFloat(document.getElementById('latMin').value);
+  const latSec = parseFloat(document.getElementById('latSec').value);
+  const latDir = document.getElementById('latDir').value;
+  const lonDeg = parseFloat(document.getElementById('lonDeg').value);
+  const lonMin = parseFloat(document.getElementById('lonMin').value);
+  const lonSec = parseFloat(document.getElementById('lonSec').value);
+  const lonDir = document.getElementById('lonDir').value;
+
+  const errEl = document.getElementById('dmsError');
+  const outEl = document.getElementById('dmsOutput');
+  errEl.style.display = 'none';
+  outEl.style.display = 'none';
+
+  if ([latDeg, latMin, latSec, lonDeg, lonMin, lonSec].some(v => isNaN(v) || v === '')) {
+    errEl.textContent = 'Fill in all six fields (degrees, minutes, and seconds for both lat and lon).';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (latMin < 0 || latMin >= 60 || lonMin < 0 || lonMin >= 60) {
+    errEl.textContent = 'Minutes must be between 0 and 59.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (latSec < 0 || latSec >= 60 || lonSec < 0 || lonSec >= 60) {
+    errEl.textContent = 'Seconds must be between 0 and 59.9999.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  let lat = latDeg + latMin / 60 + latSec / 3600;
+  if (latDir === 'S') lat = -lat;
+  let lon = lonDeg + lonMin / 60 + lonSec / 3600;
+  if (lonDir === 'W') lon = -lon;
+
+  document.getElementById('dmsResultText').textContent = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+  outEl.style.display = 'flex';
+}
+
+function useDMSResult() {
+  const text = document.getElementById('dmsResultText').textContent;
+  if (text) {
+    document.getElementById('coordInput').value = text;
+    document.getElementById('coordInput').focus();
+  }
+}
+
+function copyDMSResult(btn) {
+  const text = document.getElementById('dmsResultText').textContent;
   navigator.clipboard.writeText(text).then(() => {
     const orig = btn.textContent;
     btn.textContent = 'Copied!';
